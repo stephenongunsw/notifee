@@ -36,6 +36,7 @@ import androidx.annotation.NonNull;
 import androidx.concurrent.futures.CallbackToFutureAdapter;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.work.Data;
@@ -340,6 +341,10 @@ class NotificationManager {
           if (actionBundles == null) {
             return builder;
           }
+          
+          // Variables for storing action tasks intent so that it can be passed to CallStyle
+          PendingIntent[] actionPendingIntents = new PendingIntent[2];
+          int actionPendingIntentsIdx = 0;
 
           for (NotificationAndroidActionModel actionBundle : actionBundles) {
             PendingIntent pendingIntent = null;
@@ -362,6 +367,12 @@ class NotificationManager {
                       new String[] {"notification", "pressAction"},
                       notificationModel.toBundle(),
                       actionBundle.getPressAction().toBundle());
+            }
+
+
+            // Store pending intent in array to be used in CallStyle
+            if(actionPendingIntentsIdx<2){
+              actionPendingIntents[actionPendingIntentsIdx++] = pendingIntent;
             }
 
             String icon = actionBundle.getIcon();
@@ -400,6 +411,19 @@ class NotificationManager {
             builder.addAction(actionBuilder.build());
           }
 
+          // If Android >= 12 and it is a call, use CallStyle
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+              && androidModel.getCategory().equals(Notification.CATEGORY_CALL)) {
+
+            Person person = new Person.Builder()
+                .setName(TextUtils.fromHtml(notificationModel.getTitle()))
+                .setImportant(true)
+                .build();
+
+            builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(person,
+                actionPendingIntents[0], actionPendingIntents[1]));
+          }
+
           return builder;
         };
 
@@ -424,7 +448,11 @@ class NotificationManager {
 
           NotificationCompat.Style style = Tasks.await(styleTask);
           if (style != null) {
-            builder.setStyle(style);
+            // Don't apply style because we are applying CallStyle
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || !androidModel.getCategory().equals(Notification.CATEGORY_CALL)) {
+              builder.setStyle(style);
+            }
           }
 
           return builder;
